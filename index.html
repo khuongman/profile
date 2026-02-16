@@ -331,7 +331,7 @@
       // Optional: Ensure playback starts after user interaction (required by most browsers)
       document.addEventListener('click', function() {
         const audio = document.getElementById('backgroundMusic');
-        audio.volume = 0.1;
+        audio.volume = 0.05;
         audio.play().catch(e => console.log("Playback prevented:", e));
       });
     </script>
