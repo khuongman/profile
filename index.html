@@ -59,9 +59,6 @@
           </li>
         </ul>
       </nav>
-	<div style="position: absolute; bottom: 0; width: 100%; padding: 10px; text-align: center;">
-        <p id="count-page"></p>
-      </div>
     </header>
     <main class="main">
       <!-- Hero Section -->
@@ -342,18 +339,6 @@
         const audio = document.getElementById('backgroundMusic');
         audio.play().catch(e => console.log("Playback prevented:", e));
       });
-    </script>
-	<script>
-	var c = parseInt(localStorage.getItem('pageLoadCount')) || 0;
-	window.onload = function() {
-		const isReload = performance.navigation.type === 1; // 1 = reload
-		if (!isReload) {
-			c++;
-			localStorage.setItem('pageLoadCount', c);
-		}
-	};
-	var cpage = document.getElementById('count-page');
-	cpage.innerHTML = 'Page loaded: ' + c;
     </script>
   </body>
 </html>
