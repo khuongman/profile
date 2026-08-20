@@ -1,0 +1,263 @@
+function ScheduleStopList({ routeId, direction: initialDirection, dayOfWeek: initialDayOfWeek, onDirectionChange, onDayOfWeekChange }) {
+  const [scheduleStops, setScheduleStops] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(false);
+  const [error, setError] = reactExports.useState(null);
+  const [selectedDirection, setSelectedDirection] = reactExports.useState(initialDirection || "");
+  const [selectedDayOfWeek, setSelectedDayOfWeek] = reactExports.useState(initialDayOfWeek || "");
+  const [availableDirections, setAvailableDirections] = reactExports.useState([]);
+  const [availableDays, setAvailableDays] = reactExports.useState([]);
+  const [selectedRowIndex, setSelectedRowIndex] = reactExports.useState(null);
+  reactExports.useEffect(() => {
+    setSelectedDirection(initialDirection || "");
+  }, [initialDirection]);
+  reactExports.useEffect(() => {
+    setSelectedDayOfWeek(initialDayOfWeek || "");
+  }, [initialDayOfWeek]);
+  reactExports.useEffect(() => {
+    if (!routeId) {
+      setScheduleStops(null);
+      return;
+    }
+    const fetchScheduleStops = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const url = `/api/schedule-stops/${routeId}?_format=json`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        setScheduleStops(data);
+        const directions = [...new Set(data.map((stop) => stop.direction).filter(Boolean))];
+        setAvailableDirections(directions);
+        const allDays = data.flatMap((stop) => stop.days || []).filter(Boolean);
+        const uniqueDays = [...new Set(allDays)];
+        const dayOrder = ["weekdays", "friday", "saturday", "sunday"];
+        const sortedDays = uniqueDays.sort((a, b) => {
+          const indexA = dayOrder.indexOf(a.toLowerCase());
+          const indexB = dayOrder.indexOf(b.toLowerCase());
+          if (indexA !== -1 && indexB !== -1) {
+            return indexA - indexB;
+          }
+          if (indexA !== -1) return -1;
+          if (indexB !== -1) return 1;
+          return a.localeCompare(b);
+        });
+        setAvailableDays(sortedDays);
+        if (!selectedDayOfWeek && sortedDays.length > 0) {
+          const today = (/* @__PURE__ */ new Date()).getDay();
+          const findMatchingDay = (label) => sortedDays.find((d) => d.toLowerCase() === label.toLowerCase());
+          let defaultDay = "";
+          if (today === 6) {
+            defaultDay = findMatchingDay("Saturday");
+          } else if (today === 0) {
+            defaultDay = findMatchingDay("Sunday");
+          }
+          if (!defaultDay) {
+            defaultDay = findMatchingDay("Weekdays") || findMatchingDay("Friday") || sortedDays[0];
+          }
+          if (defaultDay) {
+            setSelectedDayOfWeek(defaultDay);
+            if (onDayOfWeekChange) {
+              onDayOfWeekChange(defaultDay);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("ScheduleStopList - Error fetching schedule stops:", err);
+        setError("Failed to load schedule stops");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchScheduleStops();
+  }, [routeId]);
+  const groupStopsByBusStop = (stops) => {
+    const grouped = {};
+    stops.forEach((stop) => {
+      const rawTitle = stop.bus_stop_title || "";
+      const isLoopStop = stop.is_loop === true || stop.is_loop === 1 || stop.is_loop === "1";
+      const baseId = stop.bus_stop_id || "--";
+      const stopId = columnKeyForStop(stop);
+      if (isLoopStop) {
+        stop.sort_order = 999999;
+      }
+      if (!grouped[stopId]) {
+        grouped[stopId] = {
+          stops: [],
+          title: stop.column_label || rawTitle || `Stop #${baseId}`,
+          sortOrder: stop.sort_order
+        };
+      }
+      grouped[stopId].stops.push(stop);
+    });
+    return grouped;
+  };
+  const formatTime = (time) => {
+    if (!time) return "--";
+    if (/^\d{1,2}:\d{2}$/.test(time)) {
+      const [hours, minutes] = time.split(":");
+      const hour = parseInt(hours, 10);
+      const ampm = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      return `${displayHour}:${minutes} ${ampm}`;
+    }
+    const date = new Date(time);
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+      });
+    }
+    return time;
+  };
+  const sortTimes = (times) => {
+    return times.sort((a, b) => {
+      const timeA = a.time || "";
+      const timeB = b.time || "";
+      if (!timeA && !timeB) return 0;
+      if (!timeA) return 1;
+      if (!timeB) return -1;
+      return timeA.localeCompare(timeB);
+    });
+  };
+  if (loading) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "schedule-stop-list__header", id: "schedule-stop-list-header", children: /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Schedules" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list__loading", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Loading schedule stops..." }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "spinner-border spinner-border-sm ms-2", role: "status", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "visually-hidden", children: "Loading..." }) })
+      ] })
+    ] });
+  }
+  if (error) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list__header", id: "schedule-stop-list-header", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Schedules" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#route-transfers", className: "schedule-stop-list__header__cta btn btn-secondary", children: "Jump to Transfers" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "schedule-stop-list__error", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: error }) })
+    ] });
+  }
+  if (!scheduleStops || scheduleStops.length === 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list__header", id: "schedule-stop-list-header", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Schedules" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#route-transfers", className: "schedule-stop-list__header__cta btn btn-secondary", children: "Jump to Transfers" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "schedule-stop-list__empty", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "No schedule stops available for this route." }) })
+    ] });
+  }
+  const filteredStops = scheduleStops.filter((stop) => {
+    const directionMatch = !selectedDirection || stop.direction && stop.direction.toLowerCase() === selectedDirection.toLowerCase();
+    let dayMatch = true;
+    if (selectedDayOfWeek) {
+      if (!stop.days || !Array.isArray(stop.days) || stop.days.length === 0) {
+        dayMatch = false;
+      } else if (selectedDayOfWeek === "Weekdays") {
+        dayMatch = stop.days.includes("weekdays") && !stop.days.includes("friday");
+      } else {
+        const dayLower = selectedDayOfWeek.toLowerCase();
+        dayMatch = stop.days.some((day) => day.toLowerCase() === dayLower);
+      }
+    }
+    return directionMatch && dayMatch;
+  });
+  const useTripRows = filteredStops.length > 0 && filteredStops.every((s) => s.trip_row != null && String(s.trip_row).length > 0);
+  let stopColumns;
+  if (useTripRows) {
+    stopColumns = buildTripAlignedStopColumns(filteredStops, formatTime);
+  } else {
+    const groupedByStop = groupStopsByBusStop(filteredStops);
+    const stopIds = Object.keys(groupedByStop).sort((a, b) => {
+      const sortOrderA = groupedByStop[a].sortOrder;
+      const sortOrderB = groupedByStop[b].sortOrder;
+      return sortOrderA - sortOrderB;
+    });
+    stopColumns = stopIds.map((stopId) => {
+      const stopData = groupedByStop[stopId];
+      const sortedTimes = sortTimes([...stopData.stops]);
+      return {
+        id: stopId,
+        title: stopData.title,
+        times: sortedTimes.map((stop) => formatTime(stop.time))
+      };
+    });
+  }
+  stopColumns = stopColumns.filter(
+    (column) => column.times.some((time) => time && time !== "--")
+  );
+  const maxRows = stopColumns.reduce(
+    (max, column) => Math.max(max, column.times.length),
+    0
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list__header", id: "schedule-stop-list-header", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Schedules" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "#route-transfers", className: "schedule-stop-list__header__cta btn btn-secondary", children: "Jump to Transfers" })
+    ] }),
+    (availableDirections.length > 0 || availableDays.length > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "schedule-stop-list__filters", children: [
+      availableDirections.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "filter-group", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "schedule-stop-list__filters__header", children: /* @__PURE__ */ jsxRuntimeExports.jsx("h6", { children: "Travel Direction" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "direction-selector d-flex gap-2", children: availableDirections.map((direction) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            className: `btn d-flex gap-2 ${selectedDirection === direction ? "btn-primary__small" : "btn-primary__reversed__small flex-row-reverse"}`,
+            onClick: () => {
+              if (selectedDirection === direction) {
+                return;
+              }
+              setSelectedDirection(direction);
+              if (onDirectionChange) {
+                onDirectionChange(direction);
+              }
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `icon-arrow-left icon-arrow-${direction.toLowerCase()}` }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "eyebrow", children: direction === "westbound" ? "Westbound" : direction === "eastbound" ? "Eastbound" : direction.charAt(0).toUpperCase() + direction.slice(1) })
+            ]
+          },
+          direction
+        )) })
+      ] }),
+      availableDays.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "filter-group", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "schedule-stop-list__filters__header", children: /* @__PURE__ */ jsxRuntimeExports.jsx("h6", { children: "Travel Days" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "days-selector d-flex gap-2", children: availableDays.map((day) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            className: `btn d-flex gap-2 ${selectedDayOfWeek === day ? "btn-primary__small" : "btn-primary__reversed__small"}`,
+            onClick: () => {
+              if (selectedDayOfWeek === day) {
+                return;
+              }
+              setSelectedDayOfWeek(day);
+              if (onDayOfWeekChange) {
+                onDayOfWeekChange(day);
+              }
+            },
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "eyebrow", children: day === "Weekdays" ? "Weekdays" : day === "Friday" ? "Friday" : day === "Saturday" ? "Saturday" : day === "Sunday" ? "Sunday" : day.charAt(0).toUpperCase() + day.slice(1) })
+          },
+          day
+        )) })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "schedule-stop-list__content", children: stopColumns.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "schedule-stop-list__empty", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "No schedule stops match the selected filters." }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "schedule-table-wrapper", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("table", { className: "table schedule-table mb-0", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("thead", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("tr", { children: stopColumns.map((column) => /* @__PURE__ */ jsxRuntimeExports.jsx("th", { scope: "col", children: column.title }, column.id)) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("tbody", { children: Array.from({ length: maxRows }).map((_, rowIndex) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "tr",
+        {
+          className: `schedule-table-row${selectedRowIndex === rowIndex ? " is-selected" : ""}`,
+          onClick: () => setSelectedRowIndex(
+            selectedRowIndex === rowIndex ? null : rowIndex
+          ),
+          children: stopColumns.map((column) => /* @__PURE__ */ jsxRuntimeExports.jsx("td", { children: column.times[rowIndex] || "" }, `${column.id}-${rowIndex}`))
+        },
+        rowIndex
+      )) })
+    ] }) }) })
+  ] });
+}
